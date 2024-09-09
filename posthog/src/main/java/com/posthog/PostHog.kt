@@ -11,9 +11,10 @@ import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.ENABLE_PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
-import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
+import com.posthog.internal.PostHogPreferences.Companion.USER_STATE
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
@@ -236,7 +237,7 @@ public class PostHog private constructor(
         get() {
             synchronized(identifiedLock) {
                 if (!isIdentifiedLoaded) {
-                    isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                    isIdentified = getPreferences().getValue(USER_STATE) as? Boolean
                         ?: (distinctId != anonymousId)
                     isIdentifiedLoaded = true
                 }
@@ -246,7 +247,7 @@ public class PostHog private constructor(
         set(value) {
             synchronized(identifiedLock) {
                 field = value
-                getPreferences().setValue(IS_IDENTIFIED, value)
+                getPreferences().setValue(USER_STATE, value)
             }
         }
 
@@ -316,7 +317,7 @@ public class PostHog private constructor(
         }
 
         userPropertiesSetOnce?.let {
-            props["\$set_once"] = it
+            props["\$set_once"] = calculateSetOnceProperties(it)
         }
 
         props["\$process_person_profile"] = hasPersonProcessing()
@@ -511,7 +512,8 @@ public class PostHog private constructor(
             config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
-        if (previousDistinctId != distinctId && !isIdentified) {
+        if (distinctId != previousDistinctId && !isIdentified) {
+            getPreferences().setValue(USER_STATE, "identified")
             // this has to be set before capture since this flag will be read during the event
             // capture
             synchronized(identifiedLock) {
@@ -533,24 +535,79 @@ public class PostHog private constructor(
                 config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
             }
             this.distinctId = distinctId
+        } else if (userProperties != null || userPropertiesSetOnce != null) {
+            setPersonProperties(userProperties, userPropertiesSetOnce)
+        }
 
-            // only because of testing in isolation, this flag is always enabled
-            if (reloadFeatureFlags) {
-                reloadFeatureFlags()
-            }
-        } else {
-            config?.logger?.log("already identified with id: $distinctId.")
+        // only because of testing in isolation, this flag is always enabled
+        if (reloadFeatureFlags) {
+            reloadFeatureFlags()
         }
     }
 
+    private fun calculateSetOnceProperties(dataSetOnce: Map<String, Any>?): Map<String, Any> {
+        if (!hasPersonProcessing()) {
+            return dataSetOnce ?: emptyMap()
+        }
+        // TODO: Implement logic to obtain initial properties to merge with dataSetOnce
+        // https://github.com/PostHog/posthog-js/blob/34204f4aff107162bdb259d2a7c855d67bf0260c/src/posthog-core.ts#L986
+        return dataSetOnce ?: emptyMap()
+    }
+
     private fun hasPersonProcessing(): Boolean {
+        val enablePersonProcessing = getPreferences().getValue(ENABLE_PERSON_PROCESSING) as? Boolean ?: false
+
         return !(
             config?.personProfiles == PersonProfiles.NEVER ||
                 (
                     config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                        !isIdentified
+                        !isIdentified &&
+                        !enablePersonProcessing
                 )
         )
+    }
+
+    private fun setPersonProperties(
+        userPropertiesToSet: Map<String, Any>? = null,
+        userPropertiesToSetOnce: Map<String, Any>? = null,
+    ) {
+        if (userPropertiesToSet.isNullOrEmpty() && userPropertiesToSetOnce.isNullOrEmpty()) {
+            return
+        }
+
+        if (!requirePersonProcessing("posthog.setPersonProperties")) {
+            return
+        }
+
+        capture(
+            "\$set",
+            properties =
+                mapOf(
+                    "\$set" to (userPropertiesToSet ?: emptyMap()),
+                    "\$set_once" to (userPropertiesToSetOnce ?: emptyMap()),
+                ),
+        )
+    }
+
+    private fun createPersonProfile() {
+        if (hasPersonProcessing()) {
+            return
+        }
+
+        if (!requirePersonProcessing("posthog.createPersonProfile")) {
+            return
+        }
+
+        setPersonProperties(emptyMap(), emptyMap())
+    }
+
+    private fun requirePersonProcessing(functionName: String): Boolean {
+        if (config?.personProfiles == PersonProfiles.NEVER) {
+            config?.logger?.log("$functionName 'was called, but process_person is set to never. This call will be ignored.'")
+            return false
+        }
+        register(ENABLE_PERSON_PROCESSING, true)
+        return true
     }
 
     public override fun group(
