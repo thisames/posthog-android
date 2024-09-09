@@ -28,20 +28,21 @@ public interface PostHogPreferences {
         public const val GROUPS: String = "groups"
         internal const val ANONYMOUS_ID = "anonymousId"
         internal const val DISTINCT_ID = "distinctId"
-        internal const val IS_IDENTIFIED = "isIdentified"
+        internal const val USER_STATE = "isIdentified"
         internal const val OPT_OUT = "opt-out"
         internal const val FEATURE_FLAGS = "featureFlags"
         internal const val FEATURE_FLAGS_PAYLOAD = "featureFlagsPayload"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
+        public const val ENABLE_PERSON_PROCESSING: String = "epp"
 
         public val ALL_INTERNAL_KEYS: Set<String> =
             setOf(
                 GROUPS,
                 ANONYMOUS_ID,
                 DISTINCT_ID,
-                IS_IDENTIFIED,
+                USER_STATE,
                 OPT_OUT,
                 FEATURE_FLAGS,
                 FEATURE_FLAGS_PAYLOAD,
