@@ -9,6 +9,7 @@ import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
+import com.posthog.internal.PostHogPreferences.Companion.CURRENT_SCREEN_NAME
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
@@ -56,6 +57,7 @@ public class PostHog private constructor(
     private val groupsLock = Any()
 
     private val featureFlagsCalledLock = Any()
+    private val screenNameLock = Any()
 
     private var config: PostHogConfig? = null
 
@@ -67,8 +69,6 @@ public class PostHog private constructor(
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
-
-    private lateinit var currentScreen: String
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -254,6 +254,21 @@ public class PostHog private constructor(
             }
         }
 
+    private var _currentScreenName: String? = null
+        get() {
+            synchronized(screenNameLock) {
+                return getPreferences().getValue(CURRENT_SCREEN_NAME) as? String
+            }
+        }
+        set(value) {
+            synchronized(screenNameLock) {
+                field = value
+                if (value != null) {
+                    getPreferences().setValue(CURRENT_SCREEN_NAME, value)
+                }
+            }
+        }
+
     private var isPersonProcessingEnabled: Boolean = false
         get() {
             synchronized(personProcessingLock) {
@@ -319,8 +334,8 @@ public class PostHog private constructor(
                 }
             }
 
-            currentScreen.let {
-                props["\$screen_name"] = currentScreen
+            _currentScreenName?.let {
+                props["\$screen_name"] = it
             }
 
             userProperties?.let {
@@ -511,8 +526,6 @@ public class PostHog private constructor(
 
         val props = mutableMapOf<String, Any>()
         props["\$screen_name"] = screenTitle
-
-        currentScreen = screenTitle
 
         properties?.let {
             props.putAll(it)
@@ -866,6 +879,13 @@ public class PostHog private constructor(
         return PostHogSessionManager.getActiveSessionId()
     }
 
+    override fun setCurrentScreenName(screenName: String?) {
+        if (!isEnabled()) {
+            return
+        }
+        _currentScreenName = screenName
+    }
+
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")
         return config as? T
@@ -1050,6 +1070,10 @@ public class PostHog private constructor(
 
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
+        }
+
+        override fun setCurrentScreenName(screenName: String?) {
+            shared.setCurrentScreenName(screenName)
         }
 
         override fun <T : PostHogConfig> getConfig(): T? {

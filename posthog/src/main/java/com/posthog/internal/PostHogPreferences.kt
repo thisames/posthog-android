@@ -37,6 +37,7 @@ public interface PostHogPreferences {
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
+        public const val CURRENT_SCREEN_NAME: String = "currentScreenName"
 
         public val ALL_INTERNAL_KEYS: Set<String> =
             setOf(

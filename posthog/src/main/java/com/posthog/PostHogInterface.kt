@@ -202,6 +202,12 @@ public interface PostHogInterface {
      */
     public fun getSessionId(): UUID?
 
+    /**
+     * Sets the current screen name to be included in all events.
+     * @param screenName The name of the current screen.
+     */
+    public fun setCurrentScreenName(screenName: String?)
+
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
 }

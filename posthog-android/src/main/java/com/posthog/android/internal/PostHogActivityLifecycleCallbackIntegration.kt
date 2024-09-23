@@ -42,6 +42,8 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     }
 
     override fun onActivityStarted(activity: Activity) {
+        PostHog.setCurrentScreenName(activity.activityLabelOrName(config))
+
         if (config.captureScreenViews) {
             val screenName = activity.activityLabelOrName(config)
 
